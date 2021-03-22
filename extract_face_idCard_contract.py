@@ -303,6 +303,9 @@ def show_candidates(candis, cap):
 
 
 if __name__ == '__main__':
+    import datetime
+    starttime = datetime.datetime.now()
+
     video_path = './tmp_video/testwrite3.avi'
     video_name = video_path.split('/')[-1].split('.')[0]
 
@@ -356,5 +359,8 @@ if __name__ == '__main__':
 
     cap.release()
     cv.destroyAllWindows()
+
+    end_time = datetime.datetime.now()
+    print("Running Time: ", (end_time - starttime).seconds)
 
     import dlib

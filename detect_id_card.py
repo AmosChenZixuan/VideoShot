@@ -10,22 +10,28 @@ FACE_UPSAMPLE_TIMES = 2  # more upsampling means bigger image, more easier to fi
 CONFIDENCE_RATE = 0.005  # larger values lead to smaller confidence score
 
 
-def crop_id(image, sess, tensors, category_index, debug=False):
+def crop_id(image, sess, tensors, category_index, draw_box=False):
     image_expanded = np.expand_dims(image, axis=0)
     (boxes, scores, classes, num) = sess.run(
         tensors['out'],
         feed_dict={tensors['in']: image_expanded})
-    image, array_coord = vis_util.visualize_boxes_and_labels_on_image_array(
-        image,
-        np.squeeze(boxes),
-        np.squeeze(classes).astype(np.int32),
-        np.squeeze(scores),
-        category_index,
-        use_normalized_coordinates=True,
-        line_thickness=0,
-        min_score_thresh=ID_THRESH
-    )
-
+    array_coord = [0, 0, 0, 0]
+    # approx 100x faster per frame without drawing the box
+    if draw_box:
+        image, array_coord = vis_util.visualize_boxes_and_labels_on_image_array(
+            image,
+            np.squeeze(boxes),
+            np.squeeze(classes).astype(np.int32),
+            np.squeeze(scores),
+            category_index,
+            use_normalized_coordinates=True,
+            line_thickness=0,
+            min_score_thresh=ID_THRESH
+        )
+    else:
+        max_idx = np.argmax(scores.squeeze())
+        if scores.squeeze()[max_idx] >= ID_THRESH:
+            array_coord = boxes.squeeze()[max_idx]
     ymin, xmin, ymax, xmax = array_coord
 
     shape = np.shape(image)
@@ -92,15 +98,15 @@ def is_id_card(crop_box, face_box, debug=False):
 
 
 def id_card_detect(img, args):
-    sess, detection_graph, category_index = args
-    tensors = get_tensors(detection_graph)
+    sess, tensors, category_index = args
     try:
         # crop
         cropped_img, crop_box, score = crop_id(img, sess, tensors, category_index)
     except:
         import traceback
         traceback.print_exc()
-        return None
+        return None, 0
+
     return cropped_img if cropped_img is not None else None, score
 
 

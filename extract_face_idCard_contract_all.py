@@ -96,7 +96,7 @@ def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
     cv.destroyAllWindows()
 
     if not len(face_scores) or not len(id_card_scores):
-        raise ('NO FACE OR IDCARD DETECTED')
+        raise Exception('NO FACE OR IDCARD DETECTED')
     else:
         front_face_score_np = np.array(front_face_score) + 0.01
         front_face_score_np = (front_face_score_np - front_face_score_np.min()) / (
@@ -402,6 +402,6 @@ if __name__ == '__main__':
     cap.release()
     cv.destroyAllWindows()
     end_time = datetime.datetime.now()
-    print((end_time - starttime).seconds)
+    print("Running Time: ", (end_time - starttime).seconds)
 
     import dlib

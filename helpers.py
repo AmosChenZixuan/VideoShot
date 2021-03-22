@@ -48,7 +48,7 @@ def load_model():
             tf.import_graph_def(od_graph_def, name='')
 
         sess = tf.Session(graph=detection_graph)
-    return sess, detection_graph, category_index
+    return sess, get_tensors(detection_graph), category_index
 
 
 def get_tensors(detection_graph):
