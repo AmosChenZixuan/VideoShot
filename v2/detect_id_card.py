@@ -5,7 +5,7 @@ import dlib
 from utils import visualization_utils as vis_util
 from PIL import Image
 
-ID_THRESH = 0.9
+ID_THRESH = 0.98
 FACE_UPSAMPLE_TIMES = 2  # more upsampling means bigger image, more easier to find faces, as well as other objects
 CONFIDENCE_RATE = 0.005  # larger values lead to smaller confidence score
 

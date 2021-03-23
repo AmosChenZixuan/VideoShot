@@ -42,7 +42,7 @@ def get_video_info_and_header(path):
 def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
     num_frames = cap.get(7)
     pix_value_average = []
-    interval = 5
+    interval = 50
     face_idx_candis = []
     face_scores = []
     front_face_score = []
