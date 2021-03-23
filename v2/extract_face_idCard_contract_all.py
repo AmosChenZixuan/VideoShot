@@ -65,15 +65,12 @@ def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
             hsv_img = cv.cvtColor(frame_roi, cv.COLOR_BGR2HSV)
             pix_value_average.append(hsv_img[:, :, 1].mean())
 
-            # visualization
-            # imgzi = put_text(hsv_img, str(pix_value_average[-1]))
-            cv.imshow('ori_pic', frame)
-            cv.waitKey(1)
-            # end
+            vis_title = 'ori_pic'
             if i % interval == 0:
                 has_face, score, lm = retina_face_distinguish(frame)
-                if has_face and score.shape[0] == 2:
-                # if has_face:
+                # if has_face and score.shape[0] == 2:
+                if has_face:
+                    vis_title += "-" + str(score.shape[0]) + " faces"
                     face_idx_candis.append(i)
                     face_scores.append(np.mean(score))
                     front_face_score.append((lm[:, 1] - lm[:, 0]).mean())
@@ -82,9 +79,14 @@ def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
                 # detect_id_card
                 id_card_score = detect_id_card(frame)
                 if id_card_score:
+                    vis_title += "-with card"
                     id_card_scores.append(id_card_score)
                     id_card_idxes.append(i)
-
+            # visualization
+            # imgzi = put_text(hsv_img, str(pix_value_average[-1]))
+            cv.imshow(vis_title, frame)
+            cv.waitKey(1)
+            # end
             if i >= num_frames - 30:  # end point
                 break
             print(i)
@@ -95,8 +97,9 @@ def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
     value_np = np.stack(pix_value_average, 0)
     cv.destroyAllWindows()
 
-    if not len(face_scores) or not len(id_card_scores):
-        raise Exception('NO FACE OR IDCARD DETECTED')
+    if not len(face_scores) * len(id_card_scores):
+        zero = 'FACE' if not len(face_scores) else 'IDCARD'
+        raise ValueError(f'NO {zero} DETECTED')
     else:
         front_face_score_np = np.array(front_face_score) + 0.01
         front_face_score_np = (front_face_score_np - front_face_score_np.min()) / (
@@ -162,7 +165,7 @@ def cut(values, min_, med_, threshold_low, threshold_high, frame_length):
                     rs_list.append(tmp_list.copy())
                 flag = 0
 
-        print(i)
+        print('cut ', i)
         i += 1
     return merge_close_list(rs_list)
 
@@ -184,7 +187,7 @@ def cut_id_card(values, med_, threshold, frame_length):
                     rs_list.append(tmp_list.copy())
                 flag = 0
 
-        print(i)
+        print('cut id ', i)
         i += 1
     return merge_close_list(rs_list)
 
@@ -195,7 +198,7 @@ def find_candidates(values):
     min_ = np.min(pix_value_average)
     # mid = np.argmax(np.bincount(pix_value_average.astype(int)))
 
-    print(med, min_)
+    print(f'med:{med}, min:{min_}')
 
     paper_res_list = cut(values, min_, med, 0, 0.65, 10)
     id_res_list = cut_id_card(values, med, 0.1, 10)
@@ -259,7 +262,7 @@ def find_id_card(candis, cap, values):
             cap.set(cv.CAP_PROP_POS_FRAMES, START_FRAME + idx)
             res, frame = cap.read()
             frame = frame
-            print(START_FRAME + idx)
+            print('find id ', START_FRAME + idx)
             croped_img, rect_score = id_card_detect(frame, rect_args)
 
             if not croped_img.width:
@@ -269,8 +272,8 @@ def find_id_card(candis, cap, values):
                 half = croped_img[int(croped_img.shape[0] * 0.1): int(croped_img.shape[0] * 0.7),
                        int(croped_img.shape[1] * 0.55): int(croped_img.shape[1] * 0.95)]
                 has_face, score, _ = retina_face_distinguish(half)
-                # cv.imshow('1', croped_img)
-                # cv.waitKey(5)
+                cv.imshow('1', croped_img)
+                cv.waitKey(5)
 
                 if has_face:
                     id_card_index_candidate.append(idx)
@@ -299,7 +302,7 @@ def show_card_detect(candis, cap, values):
             res, frame = cap.read()
             frame = frame
 
-            print(START_FRAME + idx)
+            print('show card', START_FRAME + idx)
             croped_img, rect_score = id_card_detect(frame, rect_args)
             if not croped_img.width:
 

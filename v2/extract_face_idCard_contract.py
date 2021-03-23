@@ -140,7 +140,7 @@ def cut(values, min_, med_, threshold_low, threshold_high, frame_length):
                     rs_list.append(tmp_list.copy())
                 flag = 0
 
-        print(i)
+        print('cut ', i)
         i += 1
     return merge_close_list(rs_list)
 
@@ -162,7 +162,7 @@ def cut_id_card(values, med_, threshold, frame_length):
                     rs_list.append(tmp_list.copy())
                 flag = 0
 
-        print(i)
+        print('cut id card ', i)
         i += 1
     return merge_close_list(rs_list)
 
@@ -173,7 +173,7 @@ def find_candidates(values):
     min_ = np.min(pix_value_average)
     # mid = np.argmax(np.bincount(pix_value_average.astype(int)))
 
-    print(med, min_)
+    print(f'med:{med}, min:{min_}')
 
     paper_res_list = cut(values, min_, med, 0, 0.65, 10)
     id_res_list = cut_id_card(values, med, 0.1, 10)
@@ -219,7 +219,7 @@ def find_id_card(candis, cap, values):
             cap.set(cv.CAP_PROP_POS_FRAMES, START_FRAME + idx)
             res, frame = cap.read()
             frame = frame
-            print(START_FRAME + idx)
+            print('find id ', START_FRAME + idx)
             croped_img, rect_score = id_card_detect(frame, rect_args)
 
             if not croped_img.width:
@@ -229,7 +229,7 @@ def find_id_card(candis, cap, values):
                 half = croped_img[int(croped_img.shape[0] * 0.1): int(croped_img.shape[0] * 0.7),
                        int(croped_img.shape[1] * 0.55): int(croped_img.shape[1] * 0.95)]
                 has_face, score, _ = retina_face_distinguish(half)
-                cv.imshow('1', croped_img)
+                cv.imshow(f'{idx} finding id-{has_face}', croped_img)
                 cv.waitKey(5)
 
                 if has_face:
@@ -259,11 +259,11 @@ def show_card_detect(candis, cap, values):
             res, frame = cap.read()
             frame = frame
 
-            print(START_FRAME + idx)
+            print('show card', START_FRAME + idx)
             croped_img, rect_score = id_card_detect(frame, rect_args)
             if not croped_img.width:
 
-                cv.imshow('imgae', put_text(frame, str(rect_score)))
+                cv.imshow(f'{idx} imgae?', put_text(frame, str(rect_score)))
                 if cv.waitKey(1) == ord('q'):
                     break
             else:
@@ -271,7 +271,7 @@ def show_card_detect(candis, cap, values):
                 half = croped_img[int(croped_img.shape[0] * 0.1): int(croped_img.shape[0] * 0.7),
                        int(croped_img.shape[1] * 0.55): int(croped_img.shape[1] * 0.95)]
                 half_eye = retina_face_detect(half)
-                cv.imshow('imgae', put_text(croped_img, str(rect_score)))
+                cv.imshow(f'{idx} imgae', put_text(croped_img, str(rect_score)))
                 if cv.waitKey(1) == ord('q'):
                     break
         cv.waitKey(0)
@@ -295,8 +295,8 @@ def show_candidates(candis, cap):
 
         for idx in idxs:
             res, frame = cap.read()
-            print(START_FRAME + idx)
-            cv.imshow('imgae', frame)
+            print('show candi', START_FRAME + idx)
+            cv.imshow(f'{idx} imgae', frame)
             if cv.waitKey(1) == ord('q'):
                 break
         cv.waitKey(0)
@@ -306,7 +306,7 @@ if __name__ == '__main__':
     import datetime
     starttime = datetime.datetime.now()
 
-    video_path = './tmp_video/testwrite3.avi'
+    video_path = './tmp_video/testwrite2.avi'
     video_name = video_path.split('/')[-1].split('.')[0]
 
     height, width, frames_num, frames_per_sec, cap = get_video_info_and_header(video_path)

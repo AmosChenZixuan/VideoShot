@@ -1,2 +1,4 @@
 *.avi
 .idea/
+*.pyc
+*/__pychache__/
