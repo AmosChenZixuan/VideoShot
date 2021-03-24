@@ -11,13 +11,16 @@ from face_detectors import retina_face_detect, retina_face_distinguish
 
 
 parser = argparse.ArgumentParser(description='get input video path')
-parser.add_argument('--video_path', type=str)
+parser.add_argument('-v', '--video_path', type=str)
 
 starttime = datetime.datetime.now()
 rect_args = load_model()
 
 
 def pick_up_candi(candi, k, values):
+    """
+    Find the whitest k frames from candidates
+    """
     candi_values = values[candi]
     idx = lowk_idx(candi_values, k)
     return np.array(candi)[idx]
@@ -36,13 +39,26 @@ def lowk_idx(v, k):
 def get_video_info_and_header(path):
     cap = cv.VideoCapture(path)
     height, width, frames_num, frames_per_sec = cap.get(3), cap.get(4), cap.get(7), cap.get(5)
-    return height, width, frames_num, frames_per_sec, cap
+    return map(int, (height, width, frames_num, frames_per_sec)), cap
 
 
 def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
+    """
+    Args:
+        cap:  cv.VideoCapture
+        box0: Area of Interest, x-left
+        box1: Area of Interest, x-right
+        box2: Area of Interest, y-left
+        box3: Area of Interest, y-right
+
+    Returns:
+        value_np: [np.ndarray] pixel saturation average
+        best_face_idx: [int] predicted best frame containing faces
+        best_id_idx: [int] predicted best frame containing id cards
+    """
+    from config import INTERVAL, START_FRAME, N_FACE
     num_frames = cap.get(7)
     pix_value_average = []
-    interval = 50
     face_idx_candis = []
     face_scores = []
     front_face_score = []
@@ -50,31 +66,34 @@ def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
     id_card_scores = []
     id_card_idxes = []
 
-    lm_test = []
+    # lm_test = []  # retina landmarks
 
     i = START_FRAME
     cap.set(cv.CAP_PROP_POS_FRAMES, i)
     while cap.isOpened():
-
         ret, frame = cap.read()
+        # crop original frame
         frame = frame[box0: box1, box2: box3]
         if ret:
+            # shrink down the region of interest
             frame_roi = frame[int(frame.shape[0] * 0.1): int(frame.shape[0] * 0.9),
                         int(frame.shape[1] * 0.1): int(frame.shape[1] * 0.9)]
 
+            # get saturation (s-value) and save its mean value
             hsv_img = cv.cvtColor(frame_roi, cv.COLOR_BGR2HSV)
             pix_value_average.append(hsv_img[:, :, 1].mean())
 
+            # detect using CNN
             vis_title = 'ori_pic'
-            if i % interval == 0:
+            if i % INTERVAL == 0:
+                # expected n faces. if detected, save the frame as a candidate
                 has_face, score, lm = retina_face_distinguish(frame)
-                # if has_face and score.shape[0] == 2:
-                if has_face:
+                if has_face and score.shape[0] == N_FACE:
                     vis_title += "-" + str(score.shape[0]) + " faces"
                     face_idx_candis.append(i)
                     face_scores.append(np.mean(score))
                     front_face_score.append((lm[:, 1] - lm[:, 0]).mean())
-                    lm_test.append(lm)
+                    # lm_test.append(lm)
 
                 # detect_id_card
                 id_card_score = detect_id_card(frame)
@@ -82,6 +101,7 @@ def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
                     vis_title += "-with card"
                     id_card_scores.append(id_card_score)
                     id_card_idxes.append(i)
+                print("Detecting ", i)
             # visualization
             # imgzi = put_text(hsv_img, str(pix_value_average[-1]))
             cv.imshow(vis_title, frame)
@@ -89,17 +109,18 @@ def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
             # end
             if i >= num_frames - 30:  # end point
                 break
-            print(i)
         else:
             print('video cap ends at' + str(i) + 'th frame')
             break
         i += 1
+    # from list to numpy
     value_np = np.stack(pix_value_average, 0)
     cv.destroyAllWindows()
 
+    # find best faces and best id card, return their frame index
     if not len(face_scores) * len(id_card_scores):
         zero = 'FACE' if not len(face_scores) else 'IDCARD'
-        raise ValueError(f'NO {zero} DETECTED')
+        raise ValueError(f'NO {zero} DETECTED. Modify the configurations and try again (see config.py).')
     else:
         front_face_score_np = np.array(front_face_score) + 0.01
         front_face_score_np = (front_face_score_np - front_face_score_np.min()) / (
@@ -108,22 +129,27 @@ def get_hSv_value_and_extract_face(cap, box0, box1, box2, box3):
         face_scores_np = np.array(face_scores)
         access_score_np = front_face_score_np + face_scores_np * 0.01
 
-        best_face_score_idx = np.argmax(access_score_np)
+        best_face_score_idx = int(np.argmax(access_score_np))
         best_face_idx = face_idx_candis[best_face_score_idx]
 
-        best_id_card_score_idx = np.argmax(id_card_scores)
+        best_id_card_score_idx = int(np.argmax(id_card_scores))
         best_id_idx = id_card_idxes[best_id_card_score_idx]
         return value_np, best_face_idx, best_id_idx
 
-
-def clean_outsider(values):
-    values = values[values < 200]
-    values = values[values > 50]
-
-    return values
+#
+# def clean_outsider(values):
+#     values = values[values < 200]
+#     values = values[values > 50]
+#
+#     return values
 
 
 def merge_close_list(lists):
+    """
+    1. merge consecutive lists into one single list if they are close to each other
+    2. fill the middle indexes when merging
+        e.g [[1,2,3], [6,7,8], [50,51,52]] -> [[1,2,3,4,5,6,7,8], [50,51,52]]
+    """
     output_lists = []
     i = 0
     flag = 0
@@ -146,6 +172,12 @@ def merge_close_list(lists):
 
 
 def cut(values, min_, med_, threshold_low, threshold_high, frame_length):
+    """
+    looking for consecutive frames (last longer than frame_length)
+    that has pixel values satisfying the threshold boundary
+
+    Returns the merged array of frame sections (e.g. [[0-10], [50-60], ..]
+    """
     low_value = min(min_, med_)
     high_value = max(min_, med_)
     tmp_list = []
@@ -163,9 +195,8 @@ def cut(values, min_, med_, threshold_low, threshold_high, frame_length):
             if flag:
                 if len(tmp_list) >= frame_length:  # 1sec
                     rs_list.append(tmp_list.copy())
+                    print('cut ', tmp_list[0], '-', tmp_list[-1])
                 flag = 0
-
-        print('cut ', i)
         i += 1
     return merge_close_list(rs_list)
 
@@ -193,6 +224,7 @@ def cut_id_card(values, med_, threshold, frame_length):
 
 
 def find_candidates(values):
+    from config import CUT_PAPER_ARGS
     # mean_ = np.mean(pix_value_average)
     med = np.median(pix_value_average)
     min_ = np.min(pix_value_average)
@@ -200,13 +232,18 @@ def find_candidates(values):
 
     print(f'med:{med}, min:{min_}')
 
-    paper_res_list = cut(values, min_, med, 0, 0.65, 10)
-    id_res_list = cut_id_card(values, med, 0.1, 10)
+    paper_res_list = cut(values, min_, med, *CUT_PAPER_ARGS)
+    # id_res_list = cut_id_card(values, med, 0.1, 10)
+    id_res_list = paper_res_list  # Currently Not In Use
 
     return paper_res_list, id_res_list
 
 
 def search_stable_img(best_candi, values):
+    """
+    Looking for the frame which has the lowest saturation (whiter),
+        and has the least difference from its neighbor frames
+    """
     top_k_idx = pick_up_candi(best_candi, 15, values)
     dif = [(values[i - 2] + values[i + 2] - values[i] * 2) for i in top_k_idx]
     best_i = np.argmin(np.array(dif))
@@ -216,27 +253,43 @@ def search_stable_img(best_candi, values):
 
 
 def find_contract(paper_candis, start_frame, values):
+    """
+    Args:
+        paper_candis: [2D list] candidate frames sections which contain paper-like objects in it
+        start_frame: [int] predicted best frame containing id cards.
+            only looking for contracts after an id card is detected
+        values: [np.ndarray] pixel saturation average
+
+    Returns:
+        paper_idx: [int] predicted best frame containing a contract.
+    """
     weight_list = []
 
     for idx, candi in enumerate(paper_candis):
         if candi[0] < start_frame or start_frame in candi:
+            # skip sections that happened before or during the id card displaying
             continue
         else:
+            # calculate and save the weighted score
             weight_list.append((idx, values[candi].mean() * 0.5 + 0.5 * len(candi)))
 
     if len(weight_list) == 0:
         raise ValueError('no contrast appears after idcard')
-    best_idx = np.argmax(np.array([x[-1] for x in weight_list]))
+    best_idx = int(np.argmax(np.array([x[-1] for x in weight_list])))
     best_candi = paper_candis[weight_list[best_idx][0]]
     paper_idx = search_stable_img(best_candi, values)
     return paper_idx
 
 
 def detect_id_card(img):
+    """
+    looking for an id card from a frame, return the confidence score
+    """
     croped_img, rect_score = id_card_detect(img, rect_args)
     if not croped_img.width:
         return 0
     else:
+        # looking for a face in the right-middle part of the cropped area
         croped_img = cv.cvtColor(np.asarray(croped_img), cv.COLOR_RGB2BGR)
         half = croped_img[int(croped_img.shape[0] * 0.1): int(croped_img.shape[0] * 0.7),
                int(croped_img.shape[1] * 0.55): int(croped_img.shape[1] * 0.95)]
@@ -306,7 +359,7 @@ def show_card_detect(candis, cap, values):
             croped_img, rect_score = id_card_detect(frame, rect_args)
             if not croped_img.width:
 
-                cv.imshow('imgae', put_text(frame, str(rect_score)))
+                cv.imshow('image', put_text(frame, str(rect_score)))
                 if cv.waitKey(1) == ord('q'):
                     break
             else:
@@ -314,13 +367,16 @@ def show_card_detect(candis, cap, values):
                 half = croped_img[int(croped_img.shape[0] * 0.1): int(croped_img.shape[0] * 0.7),
                        int(croped_img.shape[1] * 0.55): int(croped_img.shape[1] * 0.95)]
                 half_eye = retina_face_detect(half)
-                cv.imshow('imgae', put_text(croped_img, str(rect_score)))
+                cv.imshow('image', put_text(croped_img, str(rect_score)))
                 if cv.waitKey(1) == ord('q'):
                     break
         cv.waitKey(0)
 
 
 def get_img(cap, frame_num):
+    """
+    get a particular frame from the cv.VideoCapture
+    """
     cap.set(cv.CAP_PROP_POS_FRAMES, frame_num)
     s_f, frame = cap.read()
     if s_f:
@@ -346,23 +402,26 @@ def show_candidates(candis, cap):
 
 
 if __name__ == '__main__':
-    # video_path = './tmp_video/testwrite2.avi'
-    # video_path = './test_samples/3.avi'
-    args = parser.parse_args()
-    video_path = args.video_path
+    from config import OUTPUT_FOLDER, START_FRAME, AOI
+    try:
+        args = parser.parse_args()
+        video_path = args.video_path
+        assert video_path is not None
+    except AssertionError:
+        video_path = 'test_samples/c3.avi'
     video_name = video_path.split('/')[-1].split('.')[0]
+    write_root = OUTPUT_FOLDER + video_name
 
-    height, width, frames_num, frames_per_sec, cap = get_video_info_and_header(video_path)
-    height, width, frames_num, frames_per_sec = map(int, (height, width, frames_num, frames_per_sec))
-    # START_FRAME = frames_per_sec * 15
-    START_FRAME = 0
-    print(height, width, frames_num, frames_per_sec)
-    pix_value_average, people_face_idx, id_card_idx = get_hSv_value_and_extract_face(cap, 0, -1, 0, -1)
+    vinfo, cap = get_video_info_and_header(video_path)
+    height, width, frames_num, frames_per_sec = vinfo
+    print(f"=========Video Info: {height}x{width}, {frames_num} frames, fps {frames_per_sec}=========")
+
+    pix_value_average, people_face_idx, id_card_idx = get_hSv_value_and_extract_face(cap, *AOI)
     people_face_img = get_img(cap, START_FRAME + people_face_idx)
-    cv.imwrite('./output/' + video_name + '_face.png', people_face_img)
+    cv.imwrite(write_root + '_face.png', people_face_img)
 
     id_card_img = get_img(cap, START_FRAME + id_card_idx)
-    cv.imwrite('./output/' + video_name + '_id_card.png', id_card_img)
+    cv.imwrite(write_root + '_id_card.png', id_card_img)
     # visual s values
     # import matplotlib.pyplot as plt
     # import matplotlib; matplotlib.use('TkAgg')
@@ -372,8 +431,8 @@ if __name__ == '__main__':
     # end
 
     contract_candis, id_candis = find_candidates(pix_value_average)
-    if len(id_candis) == 0:
-        raise ValueError('no id_card_candidates found, please check the video or adjust the threshold')
+    # if len(id_candis) == 0:
+    #     raise ValueError('no id_card_candidates found, please check the video or adjust the threshold')
     if len(contract_candis) == 0:
         raise ValueError('no contract_candidates found, please check the video or adjust the threshold')
 
@@ -390,7 +449,7 @@ if __name__ == '__main__':
 
     paper_idx = find_contract(contract_candis, id_card_idx, pix_value_average)
     paper_img = get_img(cap, START_FRAME + paper_idx)
-    cv.imwrite('./output/' + video_name + '_contract.png', paper_img)
+    cv.imwrite(write_root + '_contract.png', paper_img)
 
     # save result
 
